@@ -36,6 +36,10 @@ char line_buffer[20];
 int submenu = 0;
 int inmenu = 0;
 
+int current_rate = 0;
+int current_step_count = 0;
+float current_pos = 0.0;
+
 void saveEEPROM() {
   EEPROM.put(0, num_rates);
   for (int i=0;i<10;i++) {
@@ -123,23 +127,26 @@ void clearLCD() {
 }
 
 void updateLCD() {
+  int old_menu = menu_mode;
+  int old_submenu = submenu;
   lcd.home(); 
   lcd.noBlink();
   if (!inmenu) {
-    clearLCD();
     up = false;
     down = false;
     lcd.print("System Status:");
     lcd.setCursor(0, 1);
     lcd.print("NORMAL");
+    lcd.setCursor(0, 2);
+    sprintf(line_buffer, "%08d", enc.read());
+    lcd.print(line_buffer);
     return;
+  }
+  if ((up | down) & !edit) {
+    clearLCD();
   }
   switch (menu_mode) {
     case Enumrates:
-      lcd.print("Number of rates:");
-      lcd.setCursor(0, 1);
-      sprintf(line_buffer, "%02d", num_rates);
-      lcd.print(line_buffer);
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -149,7 +156,14 @@ void updateLCD() {
         if (down) {
           num_rates--;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        sprintf(line_buffer, "%02d", num_rates);
+        lcd.print(line_buffer);
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -158,14 +172,15 @@ void updateLCD() {
         } else if (down) {
           menu_mode = Eminspeed;
         }
+      } else {
+        lcd.print("Number of rates:");
+        lcd.setCursor(0, 1);
+        sprintf(line_buffer, "%02d", num_rates);
+        lcd.print(line_buffer);
       }
+      
       break;
     case Erates:
-      sprintf(line_buffer, "Rate %02d:", submenu);
-      lcd.print(line_buffer);
-      lcd.setCursor(0, 1);
-      sprintf(line_buffer, "%02d", rates[submenu]);
-      lcd.print(line_buffer);
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -175,7 +190,14 @@ void updateLCD() {
         if (down) {
           rates[submenu]--;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        sprintf(line_buffer, "%02d", rates[submenu]);
+        lcd.print(line_buffer);
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -192,16 +214,16 @@ void updateLCD() {
             submenu--;
           }
         }
+      } else {
+        sprintf(line_buffer, "Rate %02d:", submenu);
+        lcd.print(line_buffer);
+        lcd.setCursor(0, 1);
+        sprintf(line_buffer, "%02d", rates[submenu]);
+        lcd.print(line_buffer);
       }
+
       break;
     case Erotperrate:
-      sprintf(line_buffer, "Rev for rate %02d:", submenu);
-      lcd.print(line_buffer);
-      lcd.setCursor(0, 1);
-      ftoa(line_buffer, rot_per_rate[submenu], 1);
-      lcd.print("     ");
-      lcd.setCursor(0, 1);
-      lcd.print(line_buffer);
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -211,7 +233,16 @@ void updateLCD() {
         if (down) {
           rot_per_rate[submenu] = rot_per_rate[submenu] - 0.1;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, rot_per_rate[submenu], 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -229,16 +260,18 @@ void updateLCD() {
             submenu--;
           }
         }
+      } else {
+        sprintf(line_buffer, "Rev for rate %02d:", submenu);
+        lcd.print(line_buffer);
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, rot_per_rate[submenu], 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
       }
+
       break;
     case Erandomizeorder:
-      lcd.print("Randomize order?:");
-      lcd.setCursor(0,1);
-      if (randomize_order) {
-        lcd.print("Yes");
-      } else {
-        lcd.print("No ");
-      }
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -248,7 +281,17 @@ void updateLCD() {
         if (down) {
           randomize_order = !randomize_order;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0,1);
+        if (randomize_order) {
+          lcd.print("Yes");
+        } else {
+          lcd.print("No ");
+        }
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -257,16 +300,18 @@ void updateLCD() {
           menu_mode = Erotperrate;
           submenu = num_rates-1;
         }
+      } else {
+        lcd.print("Randomize order?:");
+        lcd.setCursor(0,1);
+        if (randomize_order) {
+          lcd.print("Yes");
+        } else {
+          lcd.print("No ");
+        }
       }
+
       break;
     case Erandomizeduration:
-      lcd.print("Randomize duration?:");
-      lcd.setCursor(0, 1);
-      if (randomize_duration) {
-        lcd.print("Yes");
-      } else {
-        lcd.print("No ");
-      }
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -276,7 +321,17 @@ void updateLCD() {
         if (down) {
           randomize_duration = !randomize_duration;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        if (randomize_duration) {
+          lcd.print("Yes");
+        } else {
+          lcd.print("No ");
+        }
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -284,15 +339,18 @@ void updateLCD() {
         } else if (down) {
           menu_mode = Erandomizeorder;
         }
+      } else {
+        lcd.print("Randomize duration?:");
+        lcd.setCursor(0, 1);
+        if (randomize_duration) {
+          lcd.print("Yes");
+        } else {
+          lcd.print("No ");
+        }
       }
+
       break;
     case Erandomizemin:
-      lcd.print("Min Rand Time:");
-      lcd.setCursor(0, 1);
-      ftoa(line_buffer, randomize_min, 1);
-      lcd.print("     ");
-      lcd.setCursor(0, 1);
-      lcd.print(line_buffer);
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -302,7 +360,16 @@ void updateLCD() {
         if (down) {
           randomize_min = randomize_min - 0.1;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, randomize_min, 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -310,15 +377,17 @@ void updateLCD() {
         } else if (down) {
           menu_mode = Erandomizeduration;
         }
+      } else {
+        lcd.print("Min Rand Time:");
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, randomize_min, 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
       }
+
       break;
     case Erandomizemax:
-      lcd.print("Max Rand Time:");
-      lcd.setCursor(0, 1);
-      ftoa(line_buffer, randomize_max, 1);
-      lcd.print("     ");
-      lcd.setCursor(0, 1);
-      lcd.print(line_buffer);
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -328,7 +397,16 @@ void updateLCD() {
         if (down) {
           randomize_max = randomize_max - 0.1;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, randomize_max, 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -336,15 +414,18 @@ void updateLCD() {
         } else if (down) {
           menu_mode = Erandomizemin;
         }
+      } else {
+        lcd.print("Max Rand Time:");
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, randomize_max, 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
       }
+      
       break;
     case Etransitiontime:
-      lcd.print("Transition Time:");
-      lcd.setCursor(0, 1);
-      ftoa(line_buffer, transition_time, 1);
-      lcd.print("     ");
-      lcd.setCursor(0, 1);
-      lcd.print(line_buffer);
+
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -354,7 +435,16 @@ void updateLCD() {
         if (down) {
           transition_time = transition_time - 0.1;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, transition_time, 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -362,13 +452,18 @@ void updateLCD() {
         } else if (down) {
           menu_mode = Erandomizemax;
         }
+      } else {
+        lcd.print("Transition Time:");
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, transition_time, 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
       }
+      
       break;
     case Ebrightstop:
-      lcd.print("Idle Brightness:");
-      lcd.setCursor(0, 1);
-      sprintf(line_buffer, "%02d", bright_stop);
-      lcd.print(line_buffer);
+
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -378,7 +473,14 @@ void updateLCD() {
         if (down) {
           bright_stop--;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        sprintf(line_buffer, "%02d", bright_stop);
+        lcd.print(line_buffer);
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -386,13 +488,16 @@ void updateLCD() {
         } else if (down) {
           menu_mode = Etransitiontime;
         }
+      } else {
+        lcd.print("Idle Brightness:");
+        lcd.setCursor(0, 1);
+        sprintf(line_buffer, "%02d", bright_stop);
+        lcd.print(line_buffer);
       }
+      
       break;
     case Ebrightrun:
-      lcd.print("Brightness:");
-      lcd.setCursor(0, 1);
-      sprintf(line_buffer, "%02d", bright_run);
-      lcd.print(line_buffer);
+
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -402,7 +507,14 @@ void updateLCD() {
         if (down) {
           bright_run--;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        sprintf(line_buffer, "%02d", bright_run);
+        lcd.print(line_buffer);
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -410,15 +522,15 @@ void updateLCD() {
         } else if (down) {
           menu_mode = Ebrightstop;
         }
+      } else {
+        lcd.print("Brightness:");
+        lcd.setCursor(0, 1);
+        sprintf(line_buffer, "%02d", bright_run);
+        lcd.print(line_buffer);
       }
+      
       break;
     case Eminspeed:
-      lcd.print("Min Speed:");
-      lcd.setCursor(0, 1);
-      ftoa(line_buffer, min_speed, 1);
-      lcd.print("     ");
-      lcd.setCursor(0, 1);
-      lcd.print(line_buffer);
       if (edit) {
         lcd.setCursor(0, 3);
         lcd.print("EDIT");
@@ -428,7 +540,16 @@ void updateLCD() {
         if (down) {
           min_speed = min_speed - 0.1;
         }
-      } else {
+        if ((up | down) & edit) {
+          validateState();
+          saveEEPROM();
+        }
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, min_speed, 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
+      } else if (up | down) {
         lcd.setCursor(0, 3);
         lcd.print("    ");
         if (up) {
@@ -436,20 +557,24 @@ void updateLCD() {
         } else if (down) {
           menu_mode = Ebrightrun;
         }
+      } else {
+        lcd.print("Min Speed:");
+        lcd.setCursor(0, 1);
+        ftoa(line_buffer, min_speed, 1);
+        lcd.print("     ");
+        lcd.setCursor(0, 1);
+        lcd.print(line_buffer);
       }
+      
       break;
     default:
       break;
   }
-  if ((up | down) & edit) {
-    validateState();
-    saveEEPROM();
-  }
-  if ((up | down) & !edit) {
-    clearLCD();
-  }
   up = false;
   down = false;
+  if ((menu_mode != old_menu) | old_submenu != submenu) {
+    updateLCD();
+  }
 }
 
 void setup() {
@@ -462,17 +587,24 @@ void setup() {
 int refresh_timer = 0;
 
 void loop() {
-  refresh_timer = refresh_timer % 5000;
+  if (inmenu) {
+    refresh_timer = refresh_timer % 5000;
+  } else {
+    refresh_timer = refresh_timer % 500;
+  }
   int button_state = digitalRead(KNOB_S);
   if (button_state != last_button_state) {
     if (digitalRead(KNOB_S)) {
       if (inmenu) {
         edit = !edit;
+        up = false;
+        down = false;
       } else {
         clearLCD();
       }
       refresh_timer = 1;
       inmenu = 1;
+      updateLCD();
     }
   }
   last_button_state = button_state;
@@ -502,8 +634,11 @@ void loop() {
   }
   
   if (!refresh_timer) {
-    if (!edit) {
-      inmenu = 0;
+    if (inmenu) {
+      clearLCD();
+      if (!edit) {
+        inmenu = 0;
+      }
     }
     updateLCD();
   }
