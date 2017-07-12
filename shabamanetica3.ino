@@ -2,6 +2,8 @@
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 #include <Encoder.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
 
 LiquidCrystal_I2C lcd(0x27, 20, 4);  
 
@@ -12,7 +14,8 @@ Encoder knob(KNOB_A, KNOB_B);
 
 #define ENC_A A1
 #define ENC_B A2
-Encoder enc(ENC_A, ENC_B);
+
+#define LED 7
 
 int num_rates = 1;
 int rates[10];
@@ -36,9 +39,12 @@ char line_buffer[20];
 int submenu = 0;
 int inmenu = 0;
 
-int current_rate = 0;
-int current_step_count = 0;
+#define STEPS 2400
+volatile int stopped = 0;
+volatile int current_rate = 0;
+volatile int current_step_count = 0;
 float current_pos = 0.0;
+volatile int step_counter = 0;
 
 void saveEEPROM() {
   EEPROM.put(0, num_rates);
@@ -138,8 +144,11 @@ void updateLCD() {
     lcd.setCursor(0, 1);
     lcd.print("NORMAL");
     lcd.setCursor(0, 2);
-    sprintf(line_buffer, "%08d", enc.read());
+    sprintf(line_buffer, "%08d", current_step_count);
     lcd.print(line_buffer);
+    lcd.setCursor(0,3);
+    lcd.print(digitalRead(A1));
+    lcd.print(digitalRead(A2));
     return;
   }
   if ((up | down) & !edit) {
@@ -177,6 +186,8 @@ void updateLCD() {
         lcd.setCursor(0, 1);
         sprintf(line_buffer, "%02d", num_rates);
         lcd.print(line_buffer);
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
       
       break;
@@ -220,6 +231,8 @@ void updateLCD() {
         lcd.setCursor(0, 1);
         sprintf(line_buffer, "%02d", rates[submenu]);
         lcd.print(line_buffer);
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
 
       break;
@@ -268,6 +281,8 @@ void updateLCD() {
         lcd.print("     ");
         lcd.setCursor(0, 1);
         lcd.print(line_buffer);
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
 
       break;
@@ -308,6 +323,8 @@ void updateLCD() {
         } else {
           lcd.print("No ");
         }
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
 
       break;
@@ -347,6 +364,8 @@ void updateLCD() {
         } else {
           lcd.print("No ");
         }
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
 
       break;
@@ -384,6 +403,8 @@ void updateLCD() {
         lcd.print("     ");
         lcd.setCursor(0, 1);
         lcd.print(line_buffer);
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
 
       break;
@@ -421,6 +442,8 @@ void updateLCD() {
         lcd.print("     ");
         lcd.setCursor(0, 1);
         lcd.print(line_buffer);
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
       
       break;
@@ -459,6 +482,8 @@ void updateLCD() {
         lcd.print("     ");
         lcd.setCursor(0, 1);
         lcd.print(line_buffer);
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
       
       break;
@@ -493,6 +518,8 @@ void updateLCD() {
         lcd.setCursor(0, 1);
         sprintf(line_buffer, "%02d", bright_stop);
         lcd.print(line_buffer);
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
       
       break;
@@ -527,6 +554,8 @@ void updateLCD() {
         lcd.setCursor(0, 1);
         sprintf(line_buffer, "%02d", bright_run);
         lcd.print(line_buffer);
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
       
       break;
@@ -564,8 +593,9 @@ void updateLCD() {
         lcd.print("     ");
         lcd.setCursor(0, 1);
         lcd.print(line_buffer);
+        lcd.setCursor(0, 3);
+        lcd.print("    ");
       }
-      
       break;
     default:
       break;
@@ -578,6 +608,22 @@ void updateLCD() {
 }
 
 void setup() {
+  DDRC &= ~(1 << DDC1);
+  PORTC |= (1 << PORTC1);
+  DDRC &= ~(1 << DDC2);
+  PORTC |= (1 << PORTC2);
+  PCMSK1 |= (1 << PCINT9) | (1 << PCINT10);
+  PCIFR |= (1 << PCIF1);
+  PCICR |= (1 << PCIE1);
+
+  OCR1A = 0x2000;
+  TCCR1B |= (1 << WGM12);
+  TIMSK1 |= (1 << OCIE1A);
+  
+  pinMode(LED, OUTPUT);
+  pinMode(ENC_A, INPUT_PULLUP);
+  pinMode(ENC_B, INPUT_PULLUP);
+  digitalWrite(LED, LOW);
   pinMode(KNOB_S, INPUT_PULLUP);
   loadEEPROM();
   lcd.begin();
@@ -587,6 +633,11 @@ void setup() {
 int refresh_timer = 0;
 
 void loop() {
+  stopped++;
+  if (stopped > 100) {
+    digitalWrite(LED, LOW);
+    stopped = 0;
+  }
   if (inmenu) {
     refresh_timer = refresh_timer % 5000;
   } else {
@@ -645,3 +696,27 @@ void loop() {
   refresh_timer++;
   delay(1);
 }
+
+ISR (PCINT1_vect) {
+  stopped = 0;
+  current_step_count++;
+  step_counter++;
+  if (step_counter >= (STEPS * rot_per_rate[current_rate])) {
+    step_counter = 0;
+    current_rate++;
+    current_rate = current_rate % num_rates;
+  }
+  int steps = STEPS / rates[current_rate];
+  if (current_step_count >= steps) {
+    current_step_count = 0;
+    digitalWrite(LED, HIGH);
+    OCR1A = bright_run * 650;
+    TCCR1B |= (1 << CS11);
+  }
+}
+
+ISR (TIMER1_COMPA_vect) {
+  digitalWrite(LED, LOW);
+  TCCR1B &= ~(1 << CS11);
+}
+
